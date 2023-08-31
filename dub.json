@@ -1,0 +1,9 @@
+{
+	"authors": [
+		"Robert Schadek"
+	],
+	"copyright": "Copyright © 2023, Robert Schadek",
+	"description": "A fast opinionted std.format.format(tatedWrite) alternative",
+	"license": "LGPL3",
+	"name": "fastformat"
+}
