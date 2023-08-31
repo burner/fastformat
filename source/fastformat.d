@@ -1,34 +1,53 @@
 module fastformat;
 
-import std.stdio;
+//import std.stdio;
 
 @safe:
 
-alias StringOutput = void delegate(string str) @safe;
-alias CharOutput = void delegate(char str) @safe;
+alias FFOutputter = void delegate(ref const(Array) array, string str) @safe;
 
 struct FFormatSpec {
-	static ulong Width = 0b0011_1111UL;
-	static ulong Base = 0b0011_1100_0000UL;
+@safe pure:
+	static const ulong Width =                           0b_0011_1111UL;
+	static const ulong Base =                        0b1111_1100_0000UL;
+	static const ulong SeperatorWidth =    0b0000_0111_0000_0000_0000UL;
+	static const ulong Seperator =    0b0111_1111_1000_0000_0000_0000UL;
 
 	private ulong store;
 
 	@property void width(uint w) {
-		enforce(w < 64, "width value must be less than 64");
+		enforce(w <= 64, "width value must be less than 64");
 		this.store = this.store | (Width & w);
 	}
 
-	@property uint width() {
+	@property uint width() const {
 		return cast(uint)this.store & Width;
 	}
 
 	@property void base(uint w) {
-		enforce(w < 64, "base value must be less than 64");
+		enforce(w <= 64, "base value must be less than 64");
 		this.store = this.store | (Base & (w << 6));
 	}
 
-	@property uint base() {
+	@property uint base() const {
 		return cast(uint)((this.store & Base) >> 6);
+	}
+
+	@property void seperatorWidth(char w) {
+		enforce(w <= 8, "base value must be less than 8");
+		this.store = this.store | (SeperatorWidth & (w << 13));
+	}
+
+	@property ubyte seperatorWidth() const {
+		return cast(ubyte)((this.store & SeperatorWidth) >> 13);
+	}
+
+	@property void seperator(char w) {
+		this.store = this.store | (Seperator & (w << 16));
+	}
+
+	@property char seperator() const {
+		return cast(char)((this.store & Seperator) >> 16);
 	}
 }
 
@@ -41,7 +60,8 @@ void fformattedWrite(Args...)(StringOutput sOut, string format, Args args) {
 }
 
 class FFormatException : Exception {
-	this(string s, string f = __FILE__, int line = __LINE__) {
+@safe:
+	this(string s, string f = __FILE__, int line = __LINE__) pure {
 		super(s, file, line);
 	}
 }
@@ -73,6 +93,8 @@ void fformattedWriteImpl(ref Array array, FFormatSpec spec, long value) {
 		array.buf[array.pos - idx - 1] = array.buf[idx];
 		array.buf[idx] = tmp;
 	}
+
+	insertSeparator(array, spec);
 }
 
 unittest {
@@ -127,6 +149,8 @@ void fformattedWriteImpl(ref Array array, FFormatSpec spec, ulong value) {
 		array.buf[array.pos - idx - 1] = array.buf[idx];
 		array.buf[idx] = tmp;
 	}
+
+	insertSeparator(array, spec);
 }
 
 unittest {
@@ -157,13 +181,52 @@ unittest {
 	assert(arr.buf[0 .. 4] == "1000");
 }
 
-void enforce(bool cond, string str) {
+void insertSeparator(ref Array arr, FFormatSpec spec) {
+	Array tmp;
+
+	if(spec.seperator == '\0' && spec.seperatorWidth == 0) {
+		return;
+	}
+
+	char sep = spec.seperator;
+	ubyte step = spec.seperatorWidth == 0
+		? 4
+		: spec.seperatorWidth;
+
+	foreach(idx; 0 .. arr.pos) {
+		if(idx != 0 && idx % step == 0) {
+			tmp.put(sep);
+		}
+		tmp.put(arr.buf[idx]);
+	}
+
+	arr.buf = tmp.buf;
+	arr.pos = tmp.pos;
+}
+
+unittest {
+	Array arr;
+
+	fformattedWriteImpl(arr, FFormatSpec.init, 1337UL);
+	assert(arr.pos == 4);
+	assert(arr.buf[0 .. 4] == "1337");
+
+	FFormatSpec spec;
+	spec.seperatorWidth = 2;
+	spec.seperator = 'j';
+
+	insertSeparator(arr, spec);
+	assert(arr.pos == 5);
+	assert(arr.buf[0 .. 5] == "13j37");
+}
+
+void enforce(bool cond, string str) pure {
 	if(!cond) {
 		throw new FFormatException(str);
 	}
 }
 
-struct Array {
+public struct Array {
 	char[127] buf;
 	ubyte pos;
 
