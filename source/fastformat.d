@@ -1,16 +1,34 @@
 module fastformat;
 
+import std.stdio;
+
 @safe:
 
 alias StringOutput = void delegate(string str) @safe;
 alias CharOutput = void delegate(char str) @safe;
 
 struct FFormatSpec {
+	static ulong Width = 0b0011_1111UL;
+	static ulong Base = 0b0011_1100_0000UL;
+
 	private ulong store;
 
 	@property void width(uint w) {
 		enforce(w < 64, "width value must be less than 64");
-		this.store = this.store | (0b0011_1111U & w);
+		this.store = this.store | (Width & w);
+	}
+
+	@property uint width() {
+		return cast(uint)this.store & Width;
+	}
+
+	@property void base(uint w) {
+		enforce(w < 64, "base value must be less than 64");
+		this.store = this.store | (Base & (w << 6));
+	}
+
+	@property uint base() {
+		return cast(uint)((this.store & Base) >> 6);
 	}
 }
 
@@ -34,7 +52,10 @@ static const char[71] numChars =
 	"zyxwvutsrqponmlkjihgfedcba9876543210123456789abcdefghijklmnopqrstuvwxyz";
 
 void fformattedWriteImpl(ref Array array, FFormatSpec spec, long value) {
-	int base = 10;
+	int base = spec.base == 0
+		? 10
+		: spec.base;
+
 	long tmp_value;
 
     do {
@@ -72,10 +93,27 @@ unittest {
 	fformattedWriteImpl(arr, FFormatSpec.init, 13370L);
 	assert(arr.pos == 5);
 	assert(arr.buf[0 .. 5] == "13370");
+
+	arr.reset();
+
+	FFormatSpec spec;
+	spec.base = 2;
+	fformattedWriteImpl(arr, spec, -1L);
+	assert(arr.pos == 2);
+	assert(arr.buf[0 .. 2] == "-1");
+
+	arr.reset();
+
+	fformattedWriteImpl(arr, spec, -8L);
+	assert(arr.pos == 5);
+	assert(arr.buf[0 .. 5] == "-1000");
 }
 
 void fformattedWriteImpl(ref Array array, FFormatSpec spec, ulong value) {
-	int base = 10;
+	int base = spec.base == 0
+		? 10
+		: spec.base;
+
 	ulong tmp_value;
 
     do {
@@ -103,6 +141,20 @@ unittest {
 	fformattedWriteImpl(arr, FFormatSpec.init, 13370UL);
 	assert(arr.pos == 5);
 	assert(arr.buf[0 .. 5] == "13370");
+
+	arr.reset();
+
+	FFormatSpec spec;
+	spec.base = 2;
+	fformattedWriteImpl(arr, spec, 1UL);
+	assert(arr.pos == 1);
+	assert(arr.buf[0 .. 1] == "1");
+
+	arr.reset();
+
+	fformattedWriteImpl(arr, spec, 8UL);
+	assert(arr.pos == 4);
+	assert(arr.buf[0 .. 4] == "1000");
 }
 
 void enforce(bool cond, string str) {
@@ -128,3 +180,6 @@ struct Array {
 	}
 }
 
+unittest {
+	static assert(Array.sizeof == 128);
+}

@@ -4,6 +4,7 @@
 	],
 	"copyright": "Copyright © 2023, Robert Schadek",
 	"description": "A fast opinionted std.format.format(tatedWrite) alternative",
+	"dflags-ldc": ["-d", "-ftime-trace", "-ftime-trace-file=$PACKAGE_DIR/trace.json", "-wi"],
 	"license": "LGPL3",
 	"name": "fastformat"
 }
