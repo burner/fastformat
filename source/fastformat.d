@@ -1,17 +1,20 @@
 module fastformat;
 
-//import std.stdio;
+import std.math : abs, pow, lround;
+debug import std.stdio;
+debug import std.conv : to;
 
 @safe:
 
-alias FFOutputter = void delegate(ref const(Array) array, string str) @safe;
+alias FFOutputter = void delegate(ref Array array, string str) @safe;
 
 struct FFormatSpec {
 @safe pure:
-	static const ulong Width =                           0b_0011_1111UL;
-	static const ulong Base =                        0b1111_1100_0000UL;
-	static const ulong SeperatorWidth =    0b0000_0111_0000_0000_0000UL;
-	static const ulong Seperator =    0b0111_1111_1000_0000_0000_0000UL;
+	static const ulong Width =                               0b_0011_1111UL;
+	static const ulong Base =                            0b1111_1100_0000UL;
+	static const ulong SeperatorWidth =        0b0000_0111_0000_0000_0000UL;
+	static const ulong Seperator =        0b0111_1111_1000_0000_0000_0000UL;
+	static const ulong Precision =   0b0111_1000_0000_0000_0000_0000_0000UL;
 
 	private ulong store;
 
@@ -43,21 +46,140 @@ struct FFormatSpec {
 	}
 
 	@property void seperator(char w) {
-		this.store = this.store | (Seperator & (w << 16));
+		this.store = this.store | (Seperator & (w << 15));
 	}
 
 	@property char seperator() const {
-		return cast(char)((this.store & Seperator) >> 16);
+		return cast(char)((this.store & Seperator) >> 15);
+	}
+
+	@property void precision(ubyte w) {
+		this.store = this.store | (Precision & (w << 23));
+	}
+
+	@property ubyte precision() const {
+		return cast(ubyte)((this.store & Precision) >> 23);
+	}
+
+	ulong getStore() const {
+		return this.store;
 	}
 }
 
-void fformattedWrite(Args...)(StringOutput sOut, CharOutput cOut, string format
-		, Args args)
-{
+unittest {
+	FFormatSpec s;
+	s.precision = 15;
+	assert(s.precision == 15, to!string(s.precision));
 }
 
-void fformattedWrite(Args...)(StringOutput sOut, string format, Args args) {
+void fformattedWrite(Args...)(FFOutputter sOut, string format, Args args) {
+	Array arr;
+	size_t last = 0;
+	size_t cur = 0;
+    size_t cur2 = 0;
+	size_t argsIdx = 0;
+	bool prevIsAmp;
+    FFormatSpec spec;
+	outer: for(; cur < format.length; ) {
+		if(prevIsAmp && format[cur] == '%') { // %%
+			arr.reset();
+			sOut(arr, format[last .. cur]);
+			++cur;
+			last = cur;
+        } else if(prevIsAmp && format[cur] == '.') {
+            cur2 = 1;
+            int preci = 4;
+            if(cur + cur2 < format.length 
+                    && format[cur + cur2] >= '0' 
+                    && format[cur + cur2] <= '9') 
+            {
+                preci = format[cur + cur2] - '0';
+                ++cur2;
+            }
+            if(cur + cur2 < format.length 
+                    && format[cur + cur2] >= '0' 
+                    && format[cur + cur2] <= '9') 
+            {
+                preci = preci * 10 + format[cur + cur2] - '0';
+                ++cur2;
+            }
+            cur += cur2;
+            spec.precision = cast(ubyte)preci;
+		} else if(prevIsAmp && format[cur] == 's') { // %X
+			long argIdx;
+			arr.reset();
+			sOut(arr, format[last .. cur - 1 - cur2]);
+			static foreach(arg; args) {{
+				if(argIdx == argsIdx) {
+					fformatWriteForward(sOut, spec, arg);
+                    spec = FFormatSpec.init;
+					++cur;
+					last = cur;
+					continue outer;
+				}
+				++argIdx;
+			}}
+		} else if(!prevIsAmp && format[cur] == '%') { // %
+			prevIsAmp = true;
+			++cur;
+		} else {
+			++cur;
+		}
+	}
+	if(last < cur) {
+		arr.reset();
+		sOut(arr, format[last .. cur]);
+	}
 }
+
+struct FormatSpecParseResult {
+	FFormatSpec spec;
+	long charParse;
+}
+
+FormatSpecParseResult parseFormatSpec(string toParse) {
+	FormatSpecParseResult ret;
+	return ret;
+}
+
+void fformat(Args...)(ref Array output, string format, Args args) {
+	void inputter(ref Array array, string str) {
+		if(array.pos > 0) {
+            output.put(array);
+		}
+		if(str.length > 0) {
+            output.put(str);
+		}
+	}
+
+	fformattedWrite(&inputter, format, args);
+}
+
+string fformat(Args...)(string format, Args args) {
+	string ret;
+
+	void inputter(ref Array array, string str) {
+		if(array.pos > 0) {
+			ret ~= array.buf[0 .. array.pos];
+		}
+		if(str.length > 0) {
+			ret ~= str;
+		}
+	}
+
+	fformattedWrite(&inputter, format, args);
+	return ret;
+}
+
+unittest {
+	string s = fformat("Hello %s", "World");
+	assert(s == "Hello World", s);
+}
+
+/*unittest {
+	string s = fformat("Hello %s", 1337);
+	assert(s == "Hello 1337", s);
+}*/
 
 class FFormatException : Exception {
 @safe:
@@ -67,6 +189,22 @@ class FFormatException : Exception {
 }
 
 private:
+
+void fformatWriteForward(T)(FFOutputter sOut, FFormatSpec spec, T t) {
+	Array arr;
+    static if(__traits(isUnsigned, T)) {{
+		fformattedWriteImpl(arr, spec, cast(ulong)t);
+		sOut(arr, "");
+	}} else static if(__traits(isIntegral, T)) {{
+		fformattedWriteImpl(arr, spec, cast(long)t);
+		sOut(arr, "");
+	}} else static if(__traits(isFloating, T)) {{
+		fformattedWriteImplNatural(arr, spec, cast(double)t);
+		sOut(arr, "");
+	}} else static if(is(T == string)) {{
+		sOut(arr, t);
+	}}
+}
 
 static const char[71] numChars = 
 	"zyxwvutsrqponmlkjihgfedcba9876543210123456789abcdefghijklmnopqrstuvwxyz";
@@ -87,14 +225,53 @@ void fformattedWriteImpl(ref Array array, FFormatSpec spec, long value) {
 	if(tmp_value < 0) {
 		array.put('-');
 	}
-
-	foreach(idx; 0 .. array.pos / 2) {
-		char tmp = array.buf[array.pos - idx - 1];
-		array.buf[array.pos - idx - 1] = array.buf[idx];
-		array.buf[idx] = tmp;
-	}
+	reverse(array);
 
 	insertSeparator(array, spec);
+}
+
+void fformattedWriteImplNatural(ref Array array, FFormatSpec spec, double value) {
+	long integral = cast(long)value;
+	fformattedWriteImpl(array, spec, integral);
+
+	array.put('.');
+
+	double f = (value - cast(double)integral) * cast(double)(pow(10, (spec.precision == 0
+					? 6
+					: spec.precision)));
+	long frac = abs(lround(f));
+	Array fracArr;
+	fformattedWriteImpl(fracArr, spec, frac);
+	array.put(fracArr);
+}
+
+    /*
+void stringCmp(string a, string b) {
+    import std.format : format;
+    assert(a.length == b.length, format("%s %s", a.length, b.length));
+    foreach(idx; 0 .. a.length) {
+        assert(a[idx] == b[idx], format("%s %s %s", idx, a[idx], b[idx]));
+    }
+}
+    */
+
+unittest {
+	FFormatSpec s;
+	s.precision = 4;
+	Array arr;
+	fformattedWriteImplNatural(arr, s, 1337.3737);
+    string str = arr.toString();
+    assert(str.length == 9, to!(string)(str.length));
+    assert(str == "1337.3737", "'" ~ str ~ "'");
+}
+
+unittest {
+	FFormatSpec s;
+	s.precision = 4;
+	Array arr;
+	fformattedWriteImplNatural(arr, s, -1337.3737);
+    string str = arr.toString();
+    assert(str == "-1337.3737", str);
 }
 
 unittest {
@@ -226,23 +403,73 @@ void enforce(bool cond, string str) pure {
 	}
 }
 
+void reverse(ref Array array) {
+    int left = 0;
+    int right = array.pos - 1;
+    while(left < right) {
+        char t = array.buf[left];
+        array.buf[left] = array.buf[right];
+        array.buf[right] = t;
+        left++;
+        right--;
+    }
+}
+
 public struct Array {
 	char[127] buf;
 	ubyte pos;
 
-	void put(char c) {
-		enforce(pos < 127, "Can't store additional character buffer already"
-				~ " has 127 elements");
-		this.buf[pos] = c;
+	bool put(char c) {
+		if(this.pos >= 127) {
+            return false;
+        }
+		this.buf[this.pos] = c;
 		this.pos++;
+        return true;
 	}
+
+	bool put(ref Array a) {
+		if(this.pos + a.pos >= 127) {
+            return false;
+        }
+		this.buf[this.pos .. this.pos + a.pos] = a.buf[0 .. a.pos];
+		this.pos += a.pos;
+        return true;
+	}
+
+    bool put(string s) {
+		if(this.pos + s.length >= 127) {
+            return false;
+        }
+        this.buf[this.pos .. this.pos + s.length] = s;
+        this.pos += s.length;
+        return true;
+    }
 
 	void reset() {
 		this.buf[] = '\0';
 		this.pos = 0;
 	}
+
+    string toString() const {
+        return this.buf[0 .. this.pos].idup;
+    }
 }
 
 unittest {
 	static assert(Array.sizeof == 128);
+}
+
+unittest {
+    Array arr;
+    fformat(arr, "HEllo");
+    string s = arr.toString();
+    assert(s == "HEllo", "'" ~ s ~ "'");
+}
+
+unittest {
+    Array arr;
+    fformat(arr, "HEllo %.2s", 13.37);
+    string s = arr.toString();
+    assert(s == "HEllo 13.37", s);
 }
