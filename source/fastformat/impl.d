@@ -1,8 +1,6 @@
-module fastformat;
+module fastformat.impl;
 
 import std.math : abs, pow, lround;
-debug import std.stdio;
-debug import std.conv : to;
 
 @safe:
 
@@ -66,12 +64,6 @@ struct FFormatSpec {
 	}
 }
 
-unittest {
-	FFormatSpec s;
-	s.precision = 15;
-	assert(s.precision == 15, to!string(s.precision));
-}
-
 void fformattedWrite(Args...)(FFOutputter sOut, string format, Args args) {
 	Array arr;
 	size_t last = 0;
@@ -108,13 +100,22 @@ void fformattedWrite(Args...)(FFOutputter sOut, string format, Args args) {
 		} else if(prevIsAmp 
 				&&   ( format[cur] == 's'
 					|| format[cur] == 'x'
+					|| format[cur] == 'X'
 					|| format[cur] == 'f'
 					|| format[cur] == 'd'
+					|| format[cur] == 'o'
 				     )
 				)
 		{
 			long argIdx;
 			arr.reset();
+			if(format[cur] == 'x' || format[cur] == 'X') {
+				spec.base = 16;
+			} else if(format[cur] == 'o') {
+				spec.base = 8;
+			} else if(format[cur] == 'b') {
+				spec.base = 2;
+			}
 			sOut(arr, format[last .. cur - 1 - cur2]);
 			static foreach(arg; args) {{
 				if(argIdx == argsIdx) {
@@ -178,16 +179,6 @@ string fformat(Args...)(string format, Args args) {
 	return ret;
 }
 
-unittest {
-	string s = fformat("Hello %s", "World");
-	assert(s == "Hello World", s);
-}
-
-/*unittest {
-	string s = fformat("Hello %s", 1337);
-	assert(s == "Hello 1337", s);
-}*/
-
 class FFormatException : Exception {
 @safe:
 	this(string s, string f = __FILE__, int line = __LINE__) pure {
@@ -216,7 +207,7 @@ void fformatWriteForward(T)(FFOutputter sOut, FFormatSpec spec, T t) {
 static const char[71] numChars = 
 	"zyxwvutsrqponmlkjihgfedcba9876543210123456789abcdefghijklmnopqrstuvwxyz";
 
-void fformattedWriteImpl(ref Array array, FFormatSpec spec, long value) {
+package void fformattedWriteImpl(ref Array array, FFormatSpec spec, long value) {
 	int base = spec.base == 0
 		? 10
 		: spec.base;
@@ -237,7 +228,7 @@ void fformattedWriteImpl(ref Array array, FFormatSpec spec, long value) {
 	insertSeparator(array, spec);
 }
 
-void fformattedWriteImplNatural(ref Array array, FFormatSpec spec, double value) {
+package void fformattedWriteImplNatural(ref Array array, FFormatSpec spec, double value) {
 	long integral = cast(long)value;
 	fformattedWriteImpl(array, spec, integral);
 
@@ -261,60 +252,6 @@ void stringCmp(string a, string b) {
     }
 }
     */
-
-unittest {
-	FFormatSpec s;
-	s.precision = 4;
-	Array arr;
-	fformattedWriteImplNatural(arr, s, 1337.3737);
-    string str = arr.toString();
-    assert(str.length == 9, to!(string)(str.length));
-    assert(str == "1337.3737", "'" ~ str ~ "'");
-}
-
-unittest {
-	FFormatSpec s;
-	s.precision = 4;
-	Array arr;
-	fformattedWriteImplNatural(arr, s, -1337.3737);
-    string str = arr.toString();
-    assert(str == "-1337.3737", str);
-}
-
-unittest {
-	Array arr;
-
-	fformattedWriteImpl(arr, FFormatSpec.init, -1337L);
-	assert(arr.pos == 5);
-	assert(arr.buf[0 .. 5] == "-1337");
-
-	arr.reset();
-
-	fformattedWriteImpl(arr, FFormatSpec.init, -13370L);
-	assert(arr.pos == 6);
-	assert(arr.buf[0 .. 6] == "-13370");
-
-	arr.reset();
-
-	fformattedWriteImpl(arr, FFormatSpec.init, 13370L);
-	assert(arr.pos == 5);
-	assert(arr.buf[0 .. 5] == "13370");
-
-	arr.reset();
-
-	FFormatSpec spec;
-	spec.base = 2;
-	fformattedWriteImpl(arr, spec, -1L);
-	assert(arr.pos == 2);
-	assert(arr.buf[0 .. 2] == "-1");
-
-	arr.reset();
-
-	fformattedWriteImpl(arr, spec, -8L);
-	assert(arr.pos == 5);
-	assert(arr.buf[0 .. 5] == "-1000");
-}
-
 void fformattedWriteImpl(ref Array array, FFormatSpec spec, ulong value) {
 	int base = spec.base == 0
 		? 10
@@ -337,35 +274,7 @@ void fformattedWriteImpl(ref Array array, FFormatSpec spec, ulong value) {
 	insertSeparator(array, spec);
 }
 
-unittest {
-	Array arr;
-
-	fformattedWriteImpl(arr, FFormatSpec.init, 1337UL);
-	assert(arr.pos == 4);
-	assert(arr.buf[0 .. 4] == "1337");
-
-	arr.reset();
-
-	fformattedWriteImpl(arr, FFormatSpec.init, 13370UL);
-	assert(arr.pos == 5);
-	assert(arr.buf[0 .. 5] == "13370");
-
-	arr.reset();
-
-	FFormatSpec spec;
-	spec.base = 2;
-	fformattedWriteImpl(arr, spec, 1UL);
-	assert(arr.pos == 1);
-	assert(arr.buf[0 .. 1] == "1");
-
-	arr.reset();
-
-	fformattedWriteImpl(arr, spec, 8UL);
-	assert(arr.pos == 4);
-	assert(arr.buf[0 .. 4] == "1000");
-}
-
-void insertSeparator(ref Array arr, FFormatSpec spec) {
+package void insertSeparator(ref Array arr, FFormatSpec spec) {
 	Array tmp;
 
 	if(spec.seperator == '\0' && spec.seperatorWidth == 0) {
@@ -386,22 +295,6 @@ void insertSeparator(ref Array arr, FFormatSpec spec) {
 
 	arr.buf = tmp.buf;
 	arr.pos = tmp.pos;
-}
-
-unittest {
-	Array arr;
-
-	fformattedWriteImpl(arr, FFormatSpec.init, 1337UL);
-	assert(arr.pos == 4);
-	assert(arr.buf[0 .. 4] == "1337");
-
-	FFormatSpec spec;
-	spec.seperatorWidth = 2;
-	spec.seperator = 'j';
-
-	insertSeparator(arr, spec);
-	assert(arr.pos == 5);
-	assert(arr.buf[0 .. 5] == "13j37");
 }
 
 void enforce(bool cond, string str) pure {
@@ -461,22 +354,4 @@ public struct Array {
     string toString() const {
         return this.buf[0 .. this.pos].idup;
     }
-}
-
-unittest {
-	static assert(Array.sizeof == 128);
-}
-
-unittest {
-    Array arr;
-    fformat(arr, "HEllo");
-    string s = arr.toString();
-    assert(s == "HEllo", "'" ~ s ~ "'");
-}
-
-unittest {
-    Array arr;
-    fformat(arr, "HEllo %.2s", 13.37);
-    string s = arr.toString();
-    assert(s == "HEllo 13.37", s);
 }
