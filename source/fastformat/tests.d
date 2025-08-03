@@ -152,4 +152,9 @@ unittest {
 	assert(s == " 8", "\"" ~ s ~ "\"");
 }
 
+unittest {
+	string s = fformat("%10d", 8);
+	assert(s == "         8", "\"" ~ s ~ "\"");
+}
+
 }
