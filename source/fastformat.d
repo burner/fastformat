@@ -105,7 +105,14 @@ void fformattedWrite(Args...)(FFOutputter sOut, string format, Args args) {
             }
             cur += cur2;
             spec.precision = cast(ubyte)preci;
-		} else if(prevIsAmp && format[cur] == 's') { // %X
+		} else if(prevIsAmp 
+				&&   ( format[cur] == 's'
+					|| format[cur] == 'x'
+					|| format[cur] == 'f'
+					|| format[cur] == 'd'
+				     )
+				)
+		{
 			long argIdx;
 			arr.reset();
 			sOut(arr, format[last .. cur - 1 - cur2]);
