@@ -147,5 +147,9 @@ unittest {
     assert(s == "HEllo 13.37", s);
 }
 
+unittest {
+	string s = fformat("%2d", 8);
+	assert(s == " 8", "\"" ~ s ~ "\"");
+}
 
 }

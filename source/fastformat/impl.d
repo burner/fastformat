@@ -78,6 +78,22 @@ void fformattedWrite(Args...)(FFOutputter sOut, string format, Args args) {
 			sOut(arr, format[last .. cur]);
 			++cur;
 			last = cur;
+		} else if(prevIsAmp 
+			&&  ( format[cur] > '0' 
+               && format[cur] <= '9') 
+			    )
+		{
+            cur2 = 0;
+            int width = format[cur + cur2] - '0';
+            if(cur + cur2 < format.length 
+                    && format[cur + cur2] >= '0' 
+                    && format[cur + cur2] <= '9') 
+            {
+                width = width * 10 + format[cur + cur2] - '0';
+                ++cur2;
+            }
+            cur += cur2;
+            spec.width = cast(ubyte)width;
         } else if(prevIsAmp && format[cur] == '.') {
             cur2 = 1;
             int preci = 4;
