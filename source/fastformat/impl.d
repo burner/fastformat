@@ -83,8 +83,8 @@ void fformattedWrite(Args...)(FFOutputter sOut, string format, Args args) {
                && format[cur] <= '9') 
 			    )
 		{
-            cur2 = 0;
-            int width = format[cur + cur2] - '0';
+            int width = format[cur] - '0';
+            cur2 = 1;
             if(cur + cur2 < format.length 
                     && format[cur + cur2] >= '0' 
                     && format[cur + cur2] <= '9') 
@@ -216,7 +216,9 @@ void fformatWriteForward(T)(FFOutputter sOut, FFormatSpec spec, T t) {
 		fformattedWriteImplNatural(arr, spec, cast(double)t);
 		sOut(arr, "");
 	}} else static if(is(T == string)) {{
-		sOut(arr, t);
+		arr.put(t);
+		insertWidth(arr, spec);
+		sOut(arr, "");
 	}}
 }
 
@@ -242,6 +244,7 @@ package void fformattedWriteImpl(ref Array array, FFormatSpec spec, long value) 
 	reverse(array);
 
 	insertSeparator(array, spec);
+	insertWidth(array, spec);
 }
 
 package void fformattedWriteImplNatural(ref Array array, FFormatSpec spec, double value) {
@@ -259,15 +262,6 @@ package void fformattedWriteImplNatural(ref Array array, FFormatSpec spec, doubl
 	array.put(fracArr);
 }
 
-    /*
-void stringCmp(string a, string b) {
-    import std.format : format;
-    assert(a.length == b.length, format("%s %s", a.length, b.length));
-    foreach(idx; 0 .. a.length) {
-        assert(a[idx] == b[idx], format("%s %s %s", idx, a[idx], b[idx]));
-    }
-}
-    */
 void fformattedWriteImpl(ref Array array, FFormatSpec spec, ulong value) {
 	int base = spec.base == 0
 		? 10
@@ -288,6 +282,23 @@ void fformattedWriteImpl(ref Array array, FFormatSpec spec, ulong value) {
 	}
 
 	insertSeparator(array, spec);
+	insertWidth(array, spec);
+}
+
+package void insertWidth(ref Array arr, FFormatSpec spec) {
+	if(spec.width == 0) {
+		return;
+	}
+	if(spec.width <= arr.pos) {
+		return;
+	}
+
+	Array tmp;
+	foreach(idx; 0 .. spec.width - arr.pos) {
+		tmp.put(' ');
+	}
+	tmp.put(arr);
+	arr = tmp;
 }
 
 package void insertSeparator(ref Array arr, FFormatSpec spec) {
